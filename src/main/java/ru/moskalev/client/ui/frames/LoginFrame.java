@@ -215,16 +215,13 @@ public class LoginFrame extends JFrame {
             if (client != null && client.isOpen()) {
                 client.close();
             }
-            client = new MessengerWebSocketClient("ws://localhost:8080/ws", this);
-            client.connect();
+            client = new MessengerWebSocketClient("ws://localhost:8080/ws", login, password, this);
 
             // Отправляем данные для авторизации
-            client.sendAuth(login, password);
+            client.connect();
 
         } catch (Exception ex) {
-            System.err.println("❌ [CLIENT] Ошибка: " + ex.getMessage());
-            ex.printStackTrace();
-            showError("Ошибка подключения: " + ex.getMessage());
+            showError("Ошибка: " + ex.getMessage());
             continueButton.setEnabled(true);
             continueButton.setText("Продолжить");
         }
@@ -232,7 +229,6 @@ public class LoginFrame extends JFrame {
 
     public void onAuthSuccess(String displayName) {
         SwingUtilities.invokeLater(() -> {
-            dispose();
             ChatFrame chatFrame = new ChatFrame(displayName, client);
             chatFrame.setVisible(true);
             client.setChatFrame(chatFrame); // Связываем клиент с окном чата
@@ -265,13 +261,7 @@ public class LoginFrame extends JFrame {
 
     @Override
     public void dispose() {
-        if (client != null) {
-            try {
-                client.close();
-            } catch (Exception e) {
-                // ignore
-            }
-        }
+
         super.dispose();
     }
 }

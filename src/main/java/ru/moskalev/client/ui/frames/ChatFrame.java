@@ -32,7 +32,11 @@ public class ChatFrame extends JFrame {
     }
 
     public void initContactsRequest() {
-        wsClient.requestContacts();
+        SwingUtilities.invokeLater(() -> {
+            if (wsClient != null) {
+                wsClient.requestContacts();
+            }
+        });
     }
 
     public void updateContactsList(List<MessengerWebSocketClient.ContactUI> contacts) {
@@ -52,34 +56,40 @@ public class ChatFrame extends JFrame {
         setLocationRelativeTo(null);
         setMinimumSize(new Dimension(800, 600));
 
-        // Основной контейнер с отступами
+        // Основной контейнер
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(new Color(25, 35, 48));
-        mainPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
         // === ВЕРХНЯЯ ПАНЕЛЬ ===
         JPanel topPanel = createTopPanel();
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // === ЦЕНТРАЛЬНАЯ ЧАСТЬ: контакты + чат ===
+        // === SPLIT PANE: контакты + чат ===
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setDividerLocation(280);
         splitPane.setDividerSize(1);
         splitPane.setBorder(null);
         splitPane.setBackground(new Color(25, 35, 48));
+        splitPane.setOneTouchExpandable(false); // 🔥 Чище выглядит
 
-        // Левая панель: контакты
+        // ── Левая панель: контакты ──
         contactsPanel = new JPanel();
         contactsPanel.setLayout(new BoxLayout(contactsPanel, BoxLayout.Y_AXIS));
         contactsPanel.setBackground(new Color(32, 44, 59));
-        contactsPanel.setPreferredSize(new Dimension(280, 0));
+        // 🔥 Убираем высоту 0 — пусть BoxLayout сам рассчитает
+        contactsPanel.setPreferredSize(new Dimension(280, 600));
+        contactsPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // 🔥 Важно для BoxLayout
 
         JScrollPane contactsScroll = new JScrollPane(contactsPanel);
         contactsScroll.setBorder(null);
         contactsScroll.setBackground(new Color(32, 44, 59));
+        contactsScroll.setViewportBorder(null); // 🔥 Убираем лишнюю рамку
+        ((JComponent) contactsScroll.getViewport()).setBorder(null);
+        contactsScroll.getVerticalScrollBar().setUnitIncrement(16); // 🔥 Плавная прокрутка
+
         splitPane.setLeftComponent(contactsScroll);
 
-        // Правая панель: чат
+        // ── Правая панель: чат ──
         JPanel chatPanel = new JPanel(new BorderLayout());
         chatPanel.setBackground(new Color(25, 35, 48));
 
@@ -94,15 +104,21 @@ public class ChatFrame extends JFrame {
         chatHistoryPanel = new JPanel();
         chatHistoryPanel.setLayout(new BoxLayout(chatHistoryPanel, BoxLayout.Y_AXIS));
         chatHistoryPanel.setBackground(new Color(25, 35, 48));
+        chatHistoryPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // 🔥 Выравнивание влево
 
         JScrollPane historyScroll = new JScrollPane(chatHistoryPanel);
         historyScroll.setBorder(null);
         historyScroll.setBackground(new Color(25, 35, 48));
+        historyScroll.setViewportBorder(null); // 🔥 Убираем рамку
         historyScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        historyScroll.getVerticalScrollBar().setUnitIncrement(16);
+
         chatPanel.add(historyScroll, BorderLayout.CENTER);
 
-        // Поле ввода сообщения
+        // Поле ввода (фиксированная высота)
         JPanel inputPanel = createInputPanel();
+        inputPanel.setPreferredSize(new Dimension(0, 80));  // 🔥 Фикс высота
+        inputPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
         chatPanel.add(inputPanel, BorderLayout.SOUTH);
 
         splitPane.setRightComponent(chatPanel);
@@ -200,15 +216,22 @@ public class ChatFrame extends JFrame {
 
 
     private void addContactItem(MessengerWebSocketClient.ContactUI contact) {
-        JPanel item = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        // Плитка: ширина 260px (с отступами), высота 56px (было ~80)
+        JPanel item = new JPanel(new BorderLayout(10, 4));
         item.setBackground(new Color(32, 44, 59));
-        item.setPreferredSize(new Dimension(260, 60));
+        item.setPreferredSize(new Dimension(260, 56));   // ← Высота 56px вместо 80
+        item.setMaximumSize(new Dimension(260, 56));       // ← Чтобы не растягивалась
         item.setCursor(new Cursor(Cursor.HAND_CURSOR));
         item.setOpaque(true);
+        item.setBorder(new EmptyBorder(4, 12, 4, 12));    // ← Отступы
 
-        // Аватар
+        // Левая часть: аватар + текст
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        leftPanel.setOpaque(false);
+
+        // Аватар 40x40
         JLabel avatar = new JLabel(contact.displayName().substring(0, 1).toUpperCase(), SwingConstants.CENTER);
-        avatar.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        avatar.setFont(new Font("Segoe UI", Font.BOLD, 16));
         avatar.setForeground(Color.WHITE);
         avatar.setPreferredSize(new Dimension(40, 40));
         avatar.setBackground(new Color(41, 103, 154));
@@ -216,21 +239,29 @@ public class ChatFrame extends JFrame {
         avatar.putClientProperty("FlatLaf.style", "arc: 20");
 
         // Текст
-        JPanel info = new JPanel(new BorderLayout());
-        info.setOpaque(false);
-        JLabel name = new JLabel(contact.displayName());
-        name.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        name.setForeground(Color.WHITE);
-        JLabel status = new JLabel(contact.online() ? "в сети" : "был(а) недавно");
-        status.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        status.setForeground(contact.online() ? new Color(76, 201, 120) : new Color(100, 110, 120));
-        info.add(name, BorderLayout.NORTH);
-        info.add(status, BorderLayout.SOUTH);
+        JPanel textPanel = new JPanel();
+        textPanel.setOpaque(false);
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
 
-        item.add(avatar);
-        item.add(info);
+        JLabel nameLabel = new JLabel(contact.displayName());
+        nameLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        nameLabel.setForeground(Color.WHITE);
+        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Клик по контакту
+        JLabel statusLabel = new JLabel(contact.online() ? "в сети" : "был(а) недавно");
+        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        statusLabel.setForeground(contact.online() ? new Color(76, 201, 120) : new Color(100, 110, 120));
+        statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        textPanel.add(nameLabel);
+        textPanel.add(Box.createVerticalStrut(2));
+        textPanel.add(statusLabel);
+
+        leftPanel.add(avatar);
+        leftPanel.add(textPanel);
+        item.add(leftPanel, BorderLayout.CENTER);
+
+        // Обработчики
         item.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
@@ -243,7 +274,9 @@ public class ChatFrame extends JFrame {
             }
             @Override
             public void mouseEntered(java.awt.event.MouseEvent e) {
-                item.setBackground(new Color(40, 54, 71));
+                if (!contact.login().equals(selectedContactLogin)) {
+                    item.setBackground(new Color(40, 54, 71));
+                }
             }
             @Override
             public void mouseExited(java.awt.event.MouseEvent e) {
@@ -259,6 +292,7 @@ public class ChatFrame extends JFrame {
         }
 
         contactsPanel.add(item);
+        contactsPanel.add(Box.createVerticalStrut(1));
     }
 
     // Метод для добавления сообщения в историю (будет использоваться при приёме)

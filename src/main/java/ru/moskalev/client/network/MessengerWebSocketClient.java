@@ -1,114 +1,119 @@
 package ru.moskalev.client.network;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Setter;
-import org.java_websocket.enums.ReadyState;
-import org.java_websocket.exceptions.WebsocketNotConnectedException;
+import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import ru.moskalev.client.ui.frames.ChatFrame;
 import ru.moskalev.client.ui.frames.LoginFrame;
-import org.java_websocket.client.WebSocketClient;
-
 
 import javax.swing.*;
 import java.net.URI;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 
 public class MessengerWebSocketClient extends WebSocketClient {
 
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final String login;
+    private final String password;
     private LoginFrame loginFrame;
     private ChatFrame chatFrame;
 
-    private final ConcurrentLinkedQueue<Runnable> messageQueue = new ConcurrentLinkedQueue<>();
-    private volatile boolean isConnected = false;
+    // 🔥 Флаг: соединение открыто И авторизация прошла
+    private volatile boolean isReady = false;
 
-    public MessengerWebSocketClient(String serverUri, LoginFrame loginFrame) throws Exception {
+    public MessengerWebSocketClient(String serverUri, String login, String password, LoginFrame loginFrame) throws Exception {
         super(new URI(serverUri));
-        this.objectMapper = new ObjectMapper();
+        this.login = login;
+        this.password = password;
         this.loginFrame = loginFrame;
-        this.chatFrame = null;;
     }
+
 
     @Override
     public void onOpen(ServerHandshake handshakedata) {
-        System.out.println("✅ [WS] Соединение установлено");
-        isConnected = true;
+        System.out.println("✅ [WS] onOpen: канал открыт");
+        sendAuth(); // Отправляем авторизацию сразу
+    }
 
-        // Отправляем всё, что накопилось в очереди
-        Runnable task;
-        while ((task = messageQueue.poll()) != null) {
-            task.run();
+    private void sendAuth() {
+        try {
+            String json = mapper.writeValueAsString(Map.of(
+                    "type", "AUTH",
+                    "payload", Map.of("login", login, "password", password)
+            ));
+            send(json); // ← Теперь безопасно: onOpen гарантирует OPEN
+            System.out.println("📤 [WS] Отправлен AUTH");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
     @Override
     public void onMessage(String message) {
         try {
-            Map<String, Object> json = objectMapper.readValue(message, Map.class);
+            Map<String, Object> json = mapper.readValue(message, Map.class);
             String type = (String) json.get("type");
 
             switch (type) {
-                case "AUTH_SUCCESS" -> handleAuthSuccess(json);
+                case "AUTH_SUCCESS" -> {
+                    System.out.println("✅ [WS] AUTH_SUCCESS received");
+                    isReady = true; // 🔥 Теперь можно слать сообщения!
+                    handleAuthSuccess(json);
+                }
                 case "AUTH_ERROR" -> handleAuthError(json);
                 case "CONTACTS_LIST" -> handleContactsList(json);
                 case "NEW_MESSAGE" -> handleNewMessage(json);
                 case "ERROR" -> handleError(json);
-                default -> System.out.println("⚠️ [WS] Неизвестный тип: " + type);
+                default -> System.out.println("⚠️ Неизвестный тип: " + type);
             }
         } catch (Exception e) {
+            System.err.println("❌ Ошибка парсинга: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
-        System.out.println("🔌 [WS] Закрыто: " + reason);
-        isConnected = false;
+        System.out.println("🔌 [WS] onClose: " + reason + " (code=" + code + ")");
+        isReady = false;
     }
 
     @Override
     public void onError(Exception ex) {
-        System.err.println("❌ [WS] Ошибка: " + ex.getMessage());
-        isConnected = false;
+        System.err.println("❌ [WS] onError: " + ex.getMessage());
+        isReady = false;
     }
 
-    public void sendAuth(String login, String password) {
-        try {
-            Map<String, Object> authMessage = new HashMap<>();
-            authMessage.put("type", "AUTH");
-            authMessage.put("payload", Map.of("login", login, "password", password));
-           // send(objectMapper.writeValueAsString(authMessage));
-            safeSend(objectMapper.writeValueAsString(authMessage), "AUTH");
-            System.out.println("📤 Отправлена авторизация: " + login);
+    // === Публичные методы ===
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
+    // 🔥 Вызывается ТОЛЬКО после AUTH_SUCCESS из ChatFrame
     public void requestContacts() {
+        if (!isReady) {
+            System.out.println("⚠️ [WS] requestContacts() вызван, но isReady=false. Пропущено.");
+            return;
+        }
         try {
-            String json = objectMapper.writeValueAsString(Map.of("type", "GET_CONTACTS"));
-           // send(json);
-            safeSend(json, "GET_CONTACTS");
-            System.out.println("📤 [CLIENT] Запрошен список контактов");
+            String json = mapper.writeValueAsString(Map.of("type", "GET_CONTACTS"));
+            send(json);
+            System.out.println("📤 [WS] Запрошен список контактов");
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void sendMessage(String toLogin, String text) {
+    public void sendMessage(String to, String text) {
+        if (!isReady) {
+            System.out.println("⚠️ [WS] sendMessage() вызван, но isReady=false. Пропущено.");
+            return;
+        }
         try {
-            Map<String, Object> msg = new HashMap<>();
-            msg.put("type", "MESSAGE");
-            msg.put("payload", Map.of("to", toLogin, "text", text));
-            send(objectMapper.writeValueAsString(msg));
-            System.out.println("📤 [CLIENT] Сообщение -> " + toLogin + ": " + text);
+            String json = mapper.writeValueAsString(Map.of(
+                    "type", "MESSAGE",
+                    "payload", Map.of("to", to, "text", text)
+            ));
+            send(json);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -149,7 +154,16 @@ public class MessengerWebSocketClient extends WebSocketClient {
     private void handleAuthSuccess(Map<String, Object> json) {
         Map<String, Object> payload = (Map<String, Object>) json.get("payload");
         String displayName = (String) payload.get("displayName");
-        loginFrame.onAuthSuccess(displayName);
+        if (loginFrame != null) {
+            SwingUtilities.invokeLater(() -> {
+                loginFrame.dispose();
+                ChatFrame chatFrame = new ChatFrame(displayName, MessengerWebSocketClient.this);
+                chatFrame.setVisible(true);
+                setChatFrame(chatFrame);
+                requestContacts();
+
+            });
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -171,22 +185,4 @@ public class MessengerWebSocketClient extends WebSocketClient {
         this.loginFrame = null;
     }
 
-    private void queueMessage(String json, String description) {
-        System.out.println("⏳ [WS] В очереди (ждём соединения): " + description);
-        messageQueue.add(() -> {
-            try { send(json); } catch (Exception e) { e.printStackTrace(); }
-        });
-    }
-    private void safeSend(String json, String description) {
-        if (isConnected && getReadyState() == ReadyState.OPEN) {
-            try {
-                send(json);
-                System.out.println("📤 [WS] Отправлено: " + description);
-            } catch (WebsocketNotConnectedException e) {
-                queueMessage(json, description);
-            }
-        } else {
-            queueMessage(json, description);
-        }
-    }
 }
