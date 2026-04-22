@@ -9,6 +9,12 @@ import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 
+/**
+ * Окно авторизации пользователя в мессенджере.
+ * <p>
+ * Предоставляет интерфейс для ввода учётных данных, валидации данных,
+ * инициализации WebSocket-соединения и обработки результатов авторизации.
+ */
 public class LoginFrame extends JFrame {
 
     private JTextField loginField;
@@ -17,6 +23,9 @@ public class LoginFrame extends JFrame {
     private JLabel errorLabel;
     private MessengerWebSocketClient client;
 
+    /**
+     * Создаёт и инициализирует окно авторизации.
+     */
     public LoginFrame() {
         setTitle("Вход в Telegram");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -33,13 +42,11 @@ public class LoginFrame extends JFrame {
         mainPanel.setBackground(new Color(25, 35, 48));
         mainPanel.setBorder(new EmptyBorder(40, 40, 40, 40));
 
-        // Заголовок
         JLabel titleLabel = new JLabel("Ваш номер телефона");
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
         titleLabel.setForeground(Color.WHITE);
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Подзаголовок
         JLabel subtitleLabel = new JLabel("Проверьте код страны и введите");
         subtitleLabel.setForeground(new Color(150, 160, 170));
         subtitleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -55,7 +62,6 @@ public class LoginFrame extends JFrame {
         mainPanel.add(subtitleLabel2);
         mainPanel.add(Box.createVerticalStrut(40));
 
-        // Поле выбора страны (заглушка)
         JPanel countryPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         countryPanel.setOpaque(false);
         countryPanel.setBorder(new EmptyBorder(0, 0, 10, 0));
@@ -71,7 +77,6 @@ public class LoginFrame extends JFrame {
 
         mainPanel.add(countryPanel);
 
-        // Поле ввода кода страны (+7)
         JPanel codePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         codePanel.setOpaque(false);
         codePanel.setBorder(new EmptyBorder(0, 0, 10, 0));
@@ -86,7 +91,6 @@ public class LoginFrame extends JFrame {
 
         mainPanel.add(codePanel);
 
-        // Поле ввода логина
         loginField = new JTextField();
         loginField.setFont(new Font("Segoe UI", Font.PLAIN, 16));
         loginField.setPreferredSize(new Dimension(300, 40));
@@ -102,7 +106,6 @@ public class LoginFrame extends JFrame {
         loginField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "введите логин");
         loginField.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Поле ввода пароля
         passwordField = new JPasswordField();
         passwordField.setFont(new Font("Segoe UI", Font.PLAIN, 16));
         passwordField.setPreferredSize(new Dimension(300, 40));
@@ -119,7 +122,6 @@ public class LoginFrame extends JFrame {
 
         passwordField.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Обработка Enter
         KeyAdapter enterListener = new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -136,14 +138,12 @@ public class LoginFrame extends JFrame {
         mainPanel.add(passwordField);
         mainPanel.add(Box.createVerticalStrut(30));
 
-        // Метка ошибки
         errorLabel = new JLabel();
         errorLabel.setForeground(new Color(237, 108, 95));
         errorLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         errorLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         mainPanel.add(errorLabel);
 
-        // Кнопка "Продолжить"
         continueButton = new JButton("Продолжить");
         continueButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
         continueButton.setPreferredSize(new Dimension(300, 44));
@@ -161,7 +161,6 @@ public class LoginFrame extends JFrame {
         mainPanel.add(continueButton);
         mainPanel.add(Box.createVerticalStrut(20));
 
-        // Кнопка смены языка
         JButton langButton = new JButton("Continue in English");
         langButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         langButton.setForeground(new Color(41, 103, 154));
@@ -173,7 +172,6 @@ public class LoginFrame extends JFrame {
         mainPanel.add(langButton);
         mainPanel.add(Box.createVerticalStrut(20));
 
-        // QR вход
         JButton qrButton = new JButton("Быстрый вход по QR-коду");
         qrButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         qrButton.setForeground(new Color(41, 103, 154));
@@ -192,7 +190,6 @@ public class LoginFrame extends JFrame {
         String login = loginField.getText().trim();
         String password = new String(passwordField.getPassword());
 
-        // Валидация
         if (login.isEmpty()) {
             showError("Введите логин");
             loginField.requestFocus();
@@ -205,19 +202,16 @@ public class LoginFrame extends JFrame {
             return;
         }
 
-        // Блокируем кнопку
         continueButton.setEnabled(false);
         continueButton.setText("Подключение...");
         clearError();
 
-        // Создаем WebSocket клиент и подключаемся
         try {
             if (client != null && client.isOpen()) {
                 client.close();
             }
             client = new MessengerWebSocketClient("ws://localhost:8080/ws", login, password, this);
 
-            // Отправляем данные для авторизации
             client.connect();
 
         } catch (Exception ex) {
@@ -231,7 +225,7 @@ public class LoginFrame extends JFrame {
         SwingUtilities.invokeLater(() -> {
             ChatFrame chatFrame = new ChatFrame(displayName, client);
             chatFrame.setVisible(true);
-            client.setChatFrame(chatFrame); // Связываем клиент с окном чата
+            client.setChatFrame(chatFrame);
         });
     }
 

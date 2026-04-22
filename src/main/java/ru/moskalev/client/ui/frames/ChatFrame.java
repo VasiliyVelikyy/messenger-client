@@ -212,7 +212,7 @@ public class ChatFrame extends JFrame {
 
     private void selectContact(String login, String displayName) {
         selectedContactLogin = login;
-        chatHeaderLabel.setText("💬 " + displayName);
+        chatHeaderLabel.setText(displayName);
         showLoadingIndicator();
         if (wsClient != null) {
             wsClient.requestHistory(login);
