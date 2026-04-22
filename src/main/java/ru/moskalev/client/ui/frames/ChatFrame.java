@@ -7,17 +7,28 @@ import ru.moskalev.client.network.MessengerWebSocketClient;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
+
+import static ru.moskalev.client.util.IconCreator.createSendIcon;
+import static ru.moskalev.client.util.TimeUtil.formatTimestamp;
 
 /**
- * Главное окно чата (после авторизации)
- * Левая панель: контакты | Правая панель: переписка
+ * Главное окно чата после успешной авторизации.
+ * <p>
+ * Содержит две панели: список контактов слева и область переписки справа.
+ * Обрабатывает отправку, получение, редактирование и удаление сообщений.
  */
 public class ChatFrame extends JFrame {
 
-    // === Конфигурация ===
+    private static final Logger logger = Logger.getLogger(ChatFrame.class.getName());
+
     private static final int WINDOW_WIDTH = 1000;
     private static final int WINDOW_HEIGHT = 700;
     private static final int MIN_WIDTH = 800;
@@ -28,17 +39,16 @@ public class ChatFrame extends JFrame {
     private static final Color BG_MAIN = new Color(25, 35, 48);
     private static final Color BG_CONTACTS = new Color(32, 44, 59);
     private static final Color BG_INPUT = new Color(40, 52, 68);
-    private static final Color MSG_OWN = new Color(41, 103, 154);      // Синий
-    private static final Color MSG_OTHER = new Color(40, 52, 68);      // Серый
+    private static final Color MSG_OWN = new Color(41, 103, 154);
+    private static final Color MSG_OTHER = new Color(40, 52, 68);
     private static final Color STATUS_ONLINE = new Color(76, 201, 120);
     private static final Color STATUS_OFFLINE = new Color(100, 110, 120);
+    private static final Color TIME_LABEL_COLOR = new Color(200, 200, 200, 180);
 
-    // === Состояние ===
     private final String currentUser;
     private final MessengerWebSocketClient wsClient;
     private String selectedContactLogin = null;
 
-    // === UI-компоненты ===
     private JPanel contactsPanel;
     private JPanel chatHistoryPanel;
     private JTextArea messageInput;
@@ -47,16 +57,21 @@ public class ChatFrame extends JFrame {
     private JScrollPane historyScroll;
     private final Map<JLabel, JPanel> messageBubbles = new HashMap<>();
 
-    // === Конструктор ===
+    /**
+     * Создаёт окно чата для авторизованного пользователя.
+     *
+     * @param currentUser логин текущего пользователя
+     * @param wsClient    клиент WebSocket для обмена сообщениями
+     */
     public ChatFrame(String currentUser, MessengerWebSocketClient wsClient) {
         this.currentUser = currentUser;
         this.wsClient = wsClient;
         initWindow();
         initUI();
         loadContacts();
+        logger.info("Chat frame initialized for user: " + currentUser);
     }
 
-    // === Инициализация окна ===
     private void initWindow() {
         setTitle("Telegram — " + currentUser);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -66,7 +81,6 @@ public class ChatFrame extends JFrame {
         getContentPane().setBackground(BG_MAIN);
     }
 
-    // === Сборка интерфейса ===
     private void initUI() {
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(BG_MAIN);
@@ -91,7 +105,6 @@ public class ChatFrame extends JFrame {
         return split;
     }
 
-    // === Левая панель: контакты ===
     private JScrollPane createContactsScrollPane() {
         contactsPanel = new JPanel();
         contactsPanel.setLayout(new BoxLayout(contactsPanel, BoxLayout.Y_AXIS));
@@ -108,6 +121,11 @@ public class ChatFrame extends JFrame {
         return scroll;
     }
 
+    /**
+     * Обновляет список контактов в левой панели.
+     *
+     * @param contacts список объектов ContactUI для отображения
+     */
     public void updateContactsList(List<ContactUI> contacts) {
         contactsPanel.removeAll();
         for (var contact : contacts) {
@@ -115,6 +133,7 @@ public class ChatFrame extends JFrame {
             contactsPanel.add(Box.createVerticalStrut(1));
         }
         refreshPanel(contactsPanel);
+        logger.fine("Contacts list updated: " + contacts.size() + " items");
     }
 
     private JPanel createContactItem(ContactUI contact) {
@@ -128,27 +147,27 @@ public class ChatFrame extends JFrame {
 
         item.add(createContactLeftPart(contact), BorderLayout.CENTER);
 
-        // Обработчики
-        item.addMouseListener(new java.awt.event.MouseAdapter() {
+        item.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
+            public void mouseClicked(MouseEvent e) {
                 selectContact(contact.login(), contact.displayName());
             }
+
             @Override
-            public void mouseEntered(java.awt.event.MouseEvent e) {
+            public void mouseEntered(MouseEvent e) {
                 if (!contact.login().equals(selectedContactLogin)) {
                     item.setBackground(new Color(40, 54, 71));
                 }
             }
+
             @Override
-            public void mouseExited(java.awt.event.MouseEvent e) {
+            public void mouseExited(MouseEvent e) {
                 if (!contact.login().equals(selectedContactLogin)) {
                     item.setBackground(BG_CONTACTS);
                 }
             }
         });
 
-        // Подсветка выбранного
         if (contact.login().equals(selectedContactLogin)) {
             item.setBackground(new Color(40, 54, 71));
         }
@@ -160,7 +179,6 @@ public class ChatFrame extends JFrame {
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         left.setOpaque(false);
 
-        // Аватар
         JLabel avatar = new JLabel(contact.displayName().substring(0, 1).toUpperCase(), SwingConstants.CENTER);
         avatar.setFont(new Font("Segoe UI", Font.BOLD, 16));
         avatar.setForeground(Color.WHITE);
@@ -169,7 +187,6 @@ public class ChatFrame extends JFrame {
         avatar.setOpaque(true);
         avatar.putClientProperty("FlatLaf.style", "arc: 20");
 
-        // Текст
         JPanel text = new JPanel();
         text.setOpaque(false);
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
@@ -203,6 +220,7 @@ public class ChatFrame extends JFrame {
         if (messageInput != null) {
             messageInput.requestFocus();
         }
+        logger.fine("Contact selected: " + login);
     }
 
     private void loadContacts() {
@@ -211,7 +229,6 @@ public class ChatFrame extends JFrame {
         }
     }
 
-    // === Правая панель: чат ===
     private JPanel createChatPanel() {
         JPanel chat = new JPanel(new BorderLayout());
         chat.setBackground(BG_MAIN);
@@ -239,7 +256,6 @@ public class ChatFrame extends JFrame {
         return chat;
     }
 
-    // === Панель ввода ===
     private JPanel createInputPanel() {
         JPanel input = new JPanel(new BorderLayout(10, 0));
         input.setBackground(BG_CONTACTS);
@@ -263,19 +279,18 @@ public class ChatFrame extends JFrame {
         scroll.setBackground(BG_INPUT);
         scroll.setViewportBorder(null);
 
-        // Enter отправляет (Shift+Enter = новая строка)
-        messageInput.addKeyListener(new java.awt.event.KeyAdapter() {
+        messageInput.addKeyListener(new KeyAdapter() {
             @Override
-            public void keyPressed(java.awt.event.KeyEvent e) {
-                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER && !e.isShiftDown()) {
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER && !e.isShiftDown()) {
                     e.consume();
                     sendMessage();
                 }
             }
         });
 
-        sendButton = new JButton();  // 🔥 Убрали текст "➤"
-        sendButton.setIcon(createSendIcon());  // 🔥 Установили иконку
+        sendButton = new JButton();
+        sendButton.setIcon(createSendIcon());
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 16));
         sendButton.setPreferredSize(new Dimension(50, 40));
         sendButton.setBackground(MSG_OWN);
@@ -286,12 +301,23 @@ public class ChatFrame extends JFrame {
         sendButton.putClientProperty("FlatLaf.style", "arc: 20");
         sendButton.addActionListener(e -> sendMessage());
 
+        sendButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                sendButton.setBackground(new Color(51, 113, 164));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                sendButton.setBackground(MSG_OWN);
+            }
+        });
+
         input.add(scroll, BorderLayout.CENTER);
         input.add(sendButton, BorderLayout.EAST);
         return input;
     }
 
-    // === Отправка сообщения (ЕДИНСТВЕННОЕ место) ===
     private void sendMessage() {
         if (selectedContactLogin == null) {
             JOptionPane.showMessageDialog(this, "Выберите контакт", "Внимание", JOptionPane.WARNING_MESSAGE);
@@ -300,21 +326,29 @@ public class ChatFrame extends JFrame {
         String text = messageInput.getText().trim();
         if (text.isEmpty()) return;
 
-        // 1. Отправляем на сервер
         wsClient.sendMessage(selectedContactLogin, text);
-
-        // 2. Показываем локально (оптимистично)
         addMessageToChat(text, true);
-
-        // 3. Очищаем поле
         messageInput.setText("");
+        logger.fine("Message sent to: " + selectedContactLogin);
     }
 
-    // === Отображение сообщений ===
+    /**
+     * Добавляет сообщение в историю чата с текущим временем.
+     *
+     * @param text  текст сообщения
+     * @param isOwn признак того, что сообщение отправлено текущим пользователем
+     */
     public void addMessageToChat(String text, boolean isOwn) {
         addMessageToChat(text, isOwn, System.currentTimeMillis());
     }
 
+    /**
+     * Добавляет сообщение в историю чата с указанным временем.
+     *
+     * @param text      текст сообщения
+     * @param isOwn     признак того, что сообщение отправлено текущим пользователем
+     * @param timestamp временная метка сообщения в миллисекундах
+     */
     public void addMessageToChat(String text, boolean isOwn, long timestamp) {
         JPanel bubble = createMessageBubble(text, isOwn, timestamp);
         chatHistoryPanel.add(bubble);
@@ -328,42 +362,35 @@ public class ChatFrame extends JFrame {
         container.setBackground(BG_MAIN);
         container.setOpaque(true);
 
-        // 🔥 Форматируем время: "14:35"
         String timeText = formatTimestamp(timestamp);
 
-        // 🔥 Текст сообщения
         JLabel label = new JLabel(
                 "<html><body style='width: " + (isOwn ? 180 : 280) + "px'>" +
                         text.replace("\n", "<br>") + "</body></html>");
         label.setFont(new Font("Segoe UI", Font.PLAIN, isOwn ? 13 : 14));
         label.setForeground(Color.WHITE);
 
-        // 🔥 Время: маленький шрифт, полупрозрачный
         JLabel timeLabel = new JLabel(timeText);
         timeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-        timeLabel.setForeground(new Color(200, 200, 200, 180)); // Полупрозрачный белый
+        timeLabel.setForeground(TIME_LABEL_COLOR);
         timeLabel.setHorizontalAlignment(
                 isOwn ? SwingConstants.RIGHT : SwingConstants.LEFT);
 
-        // 🔥 Пузырь: BorderLayout для размещения текста + времени
-        JPanel bubble = new JPanel(new BorderLayout(0, 4)); // gap: 4px между текстом и временем
+        JPanel bubble = new JPanel(new BorderLayout(0, 4));
         bubble.setBackground(isOwn ? MSG_OWN : MSG_OTHER);
         bubble.setOpaque(true);
         bubble.putClientProperty("FlatLaf.style", "arc: " + (isOwn ? 15 : 18));
-        bubble.setBorder(new EmptyBorder(10, 12, 4, 12)); // 🔥 Меньший паддинг снизу для времени
+        bubble.setBorder(new EmptyBorder(10, 12, 4, 12));
 
-        // Собираем: текст по центру, время снизу
         bubble.add(label, BorderLayout.CENTER);
         bubble.add(timeLabel, BorderLayout.SOUTH);
 
         container.add(bubble);
 
-        // 🔥 Сохраняем container для удаления (важно!)
         if (isOwn) {
             messageBubbles.put(label, container);
         }
 
-        // Контекстное меню для своих
         if (isOwn) {
             setupMessageContextMenu(bubble, label, text);
         }
@@ -371,71 +398,36 @@ public class ChatFrame extends JFrame {
         return container;
     }
 
-    private JPanel createBubblePanel(String text, boolean isOwn) {
-        // Максимальная ширина пузыря
-        int maxWidth = isOwn ? 250 : 350;
-        int textWidth = maxWidth - 30; // Вычитаем отступы
-
-        // Текст с HTML для переноса
-        JLabel label = new JLabel(
-                "<html><body style='width: " + textWidth + "px; word-wrap: break-word;'>" +
-                        text.replace("\n", "<br>") + "</body></html>");
-        label.setFont(new Font("Segoe UI", Font.PLAIN, isOwn ? 13 : 14));
-        label.setForeground(Color.WHITE);
-        label.setVerticalAlignment(SwingConstants.TOP);
-        label.setMaximumSize(new Dimension(maxWidth, Short.MAX_VALUE));
-
-        // Пузырь
-        JPanel bubble = new JPanel(new BorderLayout());
-        bubble.setBackground(isOwn ? MSG_OWN : MSG_OTHER);
-        bubble.setOpaque(true);
-        bubble.putClientProperty("FlatLaf.style", "arc: " + (isOwn ? 15 : 18));
-        bubble.setBorder(new EmptyBorder(10, 12, 10, 12));
-        bubble.setMaximumSize(new Dimension(maxWidth, Short.MAX_VALUE));
-        bubble.setAlignmentX(isOwn ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
-
-        bubble.add(label, BorderLayout.CENTER);
-
-        // Сохраняем для редактирования/удаления
-        if (isOwn) {
-            messageBubbles.put(label, bubble);
-            setupMessageContextMenu(bubble, label, text);
-        }
-
-        return bubble;
-    }
-
     private void setupMessageContextMenu(JPanel bubble, JLabel label, String originalText) {
         JPopupMenu popup = new JPopupMenu();
 
-        JMenuItem editItem = new JMenuItem("✏️ Изменить");
+        JMenuItem editItem = new JMenuItem("Изменить");
         editItem.addActionListener(e -> showEditDialog(label, originalText));
         popup.add(editItem);
 
-        JMenuItem deleteItem = new JMenuItem("🗑️ Удалить");
+        JMenuItem deleteItem = new JMenuItem("Удалить");
         deleteItem.addActionListener(e -> deleteMessage(label));
         popup.add(deleteItem);
 
-        // Правый клик
-        bubble.addMouseListener(new java.awt.event.MouseAdapter() {
+        bubble.addMouseListener(new MouseAdapter() {
             @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
+            public void mousePressed(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     popup.show(bubble, e.getX(), e.getY());
                 }
             }
         });
 
-        // Подсветка при наведении
         bubble.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        bubble.addMouseListener(new java.awt.event.MouseAdapter() {
+        bubble.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseEntered(java.awt.event.MouseEvent e) {
-                bubble.setBackground(e.getComponent().getBackground().darker());
+            public void mouseEntered(MouseEvent e) {
+                bubble.setBackground(bubble.getBackground().darker());
             }
+
             @Override
-            public void mouseExited(java.awt.event.MouseEvent e) {
-                bubble.setBackground(e.getComponent().getBackground().brighter());
+            public void mouseExited(MouseEvent e) {
+                bubble.setBackground(bubble.getBackground().brighter());
             }
         });
     }
@@ -445,6 +437,9 @@ public class ChatFrame extends JFrame {
                 text.replace("\n", "<br>") + "</div></html>";
     }
 
+    /**
+     * Прокручивает историю чата вниз.
+     */
     public void scrollToBottom() {
         if (historyScroll != null) {
             SwingUtilities.invokeLater(() -> {
@@ -454,6 +449,9 @@ public class ChatFrame extends JFrame {
         }
     }
 
+    /**
+     * Очищает историю чата.
+     */
     public void clearChat() {
         chatHistoryPanel.removeAll();
         refreshPanel(chatHistoryPanel);
@@ -474,7 +472,6 @@ public class ChatFrame extends JFrame {
         panel.repaint();
     }
 
-    // === Верхняя панель ===
     private JPanel createTopPanel() {
         JPanel top = new JPanel(new BorderLayout());
         top.setBackground(BG_CONTACTS);
@@ -493,32 +490,41 @@ public class ChatFrame extends JFrame {
             if (wsClient != null) wsClient.close();
             dispose();
             new LoginFrame().setVisible(true);
+            logger.info("User logged out: " + currentUser);
         });
         top.add(logout, BorderLayout.EAST);
 
         return top;
     }
 
-    public String getSelectedContactLogin() {
-        return selectedContactLogin;
-    }
 
     private void showEditDialog(JLabel label, String originalText) {
-        String newText = JOptionPane.showInputDialog(
-                this,                           // parent
-                "Редактировать сообщение:",     // message
-                originalText                    // initialSelectionValue
+        JTextField textField = new JTextField(originalText);
+
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.add(new JLabel("Редактировать сообщение:"), BorderLayout.NORTH);
+        panel.add(textField, BorderLayout.CENTER);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "Изменение сообщения",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
         );
 
-        if (newText != null && !newText.trim().isEmpty() && !newText.equals(originalText)) {
-            wsClient.editMessage(selectedContactLogin, originalText, newText.trim());
-            label.setText(formatMessageText(newText.trim(), 170));
-            label.revalidate();
-            label.repaint();
+        if (result == JOptionPane.OK_OPTION) {
+            String newText = textField.getText().trim();
+            if (!newText.isEmpty() && !newText.equals(originalText)) {
+                wsClient.editMessage(selectedContactLogin, originalText, newText);
+                label.setText(formatMessageText(newText, 170));
+                label.revalidate();
+                label.repaint();
+                logger.fine("Message edit requested");
+            }
         }
     }
 
-    // 🔥 Удаление сообщения
     private void deleteMessage(JLabel label) {
         int confirm = JOptionPane.showConfirmDialog(
                 this,
@@ -537,27 +543,28 @@ public class ChatFrame extends JFrame {
                 .replace("\n", " ")
                 .trim();
 
-        // 🔥 Получаем container из мапы
         JPanel container = messageBubbles.get(label);
         if (container != null) {
-            // 🔥 Удаляем container из chatHistoryPanel
             chatHistoryPanel.remove(container);
             messageBubbles.remove(label);
-
-            // 🔥 Рефреш
             chatHistoryPanel.revalidate();
             chatHistoryPanel.repaint();
         }
 
-        // Отправляем на сервер
         if (selectedContactLogin != null) {
             wsClient.deleteMessage(selectedContactLogin, cleanText);
+            logger.fine("Message delete requested");
         }
     }
 
+    /**
+     * Обновляет текст существующего сообщения в интерфейсе.
+     *
+     * @param originalText исходный текст сообщения
+     * @param newText      новый текст сообщения
+     */
     public void updateMessage(String originalText, String newText) {
         SwingUtilities.invokeLater(() -> {
-            // Ищем пузырь по оригинальному тексту
             for (Map.Entry<JLabel, JPanel> entry : messageBubbles.entrySet()) {
                 String bubbleText = entry.getKey().getText()
                         .replaceAll("<[^>]*>", "")
@@ -574,7 +581,11 @@ public class ChatFrame extends JFrame {
         });
     }
 
-    // 🔥 Вызывается при получении MESSAGE_DELETED
+    /**
+     * Удаляет сообщение из интерфейса по его тексту.
+     *
+     * @param text текст сообщения для удаления
+     */
     public void deleteMessageByContent(String text) {
         SwingUtilities.invokeLater(() -> {
             for (Map.Entry<JLabel, JPanel> entry : messageBubbles.entrySet()) {
@@ -593,27 +604,4 @@ public class ChatFrame extends JFrame {
         });
     }
 
-    private String formatTimestamp(long timestamp) {
-        java.time.LocalTime time = java.time.Instant
-                .ofEpochMilli(timestamp)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalTime();
-
-        return String.format("%02d:%02d", time.getHour(), time.getMinute());
-    }
-
-    private Icon createSendIcon() {
-        try {
-            // 🔥 Загружаем из resources
-            ImageIcon icon = new ImageIcon(getClass().getResource("/icons/send-icon.png"));
-            // Масштабируем до нужного размера
-            Image img = icon.getImage();
-            Image scaledImg = img.getScaledInstance(20, 20, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaledImg);
-        } catch (Exception e) {
-            // Если иконка не найдена — возвращаем текст
-            System.err.println("⚠️ Иконка не найдена, используем текст");
-            return new javax.swing.ImageIcon();
-        }
-    }
 }
