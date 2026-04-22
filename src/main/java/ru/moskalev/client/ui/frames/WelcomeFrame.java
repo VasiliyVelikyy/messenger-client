@@ -95,36 +95,45 @@ public class WelcomeFrame extends JFrame {
     }
 
     private Icon createPaperPlaneIcon() {
+        try {
+            // 1. Загружаем картинку из classpath (папки resources)
+            java.net.URL imgURL = getClass().getResource("/icons/telegram-logo.png");
+            if (imgURL == null) {
+                throw new RuntimeException("Картинка не найдена! Проверь путь /icons/telegram-logo.png");
+            }
+
+            // 2. Создаём ImageIcon
+            ImageIcon icon = new ImageIcon(imgURL);
+
+            // 3. Масштабируем под размер логотипа (140x140 - оптимально для WelcomeFrame)
+            Image scaledImg = icon.getImage().getScaledInstance(140, 140, Image.SCALE_SMOOTH);
+            return new ImageIcon(scaledImg);
+
+        } catch (Exception e) {
+            System.err.println("⚠️ Ошибка загрузки логотипа: " + e.getMessage());
+            // 🔥 Если картинка не найдена → возвращаем твою старую рисованную иконку
+            return createFallbackPaperPlaneIcon();
+        }
+    }
+
+    // 🔥 Твой старый метод переименуй в fallback (запасной вариант)
+    private Icon createFallbackPaperPlaneIcon() {
         return new Icon() {
             @Override
             public void paintIcon(Component c, Graphics g, int x, int y) {
                 Graphics2D g2d = (Graphics2D) g.create();
                 g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
                 g2d.setColor(Color.WHITE);
                 int[] xPoints = {x + 100, x + 30, x + 100, x + 70};
                 int[] yPoints = {y + 50, y + 20, y + 90, y + 70};
                 g2d.fillPolygon(xPoints, yPoints, 4);
-
                 g2d.setColor(new Color(200, 220, 255));
-                g2d.fillPolygon(
-                        new int[]{x + 100, x + 55, x + 70},
-                        new int[]{y + 50, y + 45, y + 70},
-                        3
-                );
-
+                g2d.fillPolygon(new int[]{x + 100, x + 55, x + 70},
+                        new int[]{y + 50, y + 45, y + 70}, 3);
                 g2d.dispose();
             }
-
-            @Override
-            public int getIconWidth() {
-                return 200;
-            }
-
-            @Override
-            public int getIconHeight() {
-                return 120;
-            }
+            @Override public int getIconWidth() { return 200; }
+            @Override public int getIconHeight() { return 120; }
         };
     }
 }
